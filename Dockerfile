@@ -58,7 +58,7 @@ RUN mkdir -p /var/run/clamav /var/lib/clamav /var/log/clamav && \
     chmod 750 /var/run/clamav
 
 # Note: ClamAV config files (clamd.conf, freshclam.conf) are generated
-# at runtime by entrypoint.sh to support read-only filesystem with tmpfs
+# at runtime in /var/run/clamav by entrypoint.sh
 
 WORKDIR /app
 

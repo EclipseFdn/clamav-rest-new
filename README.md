@@ -122,8 +122,11 @@ Prevents slowloris attacks and resource exhaustion from slow clients.
 
 ### Requirements
 
-- **Memory:** ~1GB minimum (virus signatures loaded in memory)
+- **Memory:** 3-4 GB minimum (per [official ClamAV docs](https://docs.clamav.net/manual/Installing/Docker.html))
+  - ~1.2 GB for virus signatures in memory
+  - Spikes to ~2.4 GB during daily signature updates (concurrent reload)
 - **Startup time:** 60-90 seconds (clamd loads signatures)
+- **File size limit:** ClamAV has a hard 2 GB limit per file
 
 ### Writable Directories
 
@@ -132,21 +135,27 @@ Supports **read-only root filesystem**. These directories need write access:
 | Directory | Purpose | Size | Storage |
 |-----------|---------|------|---------|
 | `/tmp` | File extraction | See below | Volume (disk) |
-| `/var/run/clamav` | clamd socket/pid | 10MB | tmpfs |
+| `/var/run/clamav` | clamd socket/pid + configs | 10MB | tmpfs |
 | `/var/log/clamav` | Logs | 50MB | tmpfs |
-| `/etc/clamav` | Generated config | 1MB | tmpfs |
-| `/var/lib/clamav` | Virus signatures | 1GB | **Persistent volume** |
+| `/var/lib/clamav` | Virus signatures | ~2GB | **Persistent volume** |
+
+> **Important:** Do NOT mount a volume over `/etc/clamav`. It contains certificates required by ClamAV 1.5+ for signature verification. Config files are generated in `/var/run/clamav` instead.
 
 ### Sizing `/tmp`
 
-Each concurrent scan needs temporary space:
+Each concurrent scan needs temporary space for the uploaded file plus extracted archive contents:
 
 ```
-Per scan = MAX_SINGLE_FILE_MB + MAX_EXTRACTED_SIZE_MB = ~1.3GB
-Total    = 1.3GB × expected concurrent scans
+Per scan = MAX_SINGLE_FILE_MB + MAX_EXTRACTED_SIZE_MB
+         = 256 MB + 1024 MB = ~1.3 GB (with defaults)
+
+Total    = per scan × MAX_THREADS (concurrent scans)
+         = 1.3 GB × 20 = ~26 GB (worst case with defaults)
 ```
 
-> **Note:** Use a disk volume for `/tmp`, not tmpfs. tmpfs consumes RAM.
+In practice, most scans use far less. A reasonable starting point is **5-10 GB**.
+
+> **Important:** Use a disk volume for `/tmp`, not tmpfs. tmpfs consumes RAM and ClamAV already needs 3-4 GB for signatures.
 
 ### Example Docker Compose
 
@@ -157,7 +166,6 @@ security_opt:
 tmpfs:
   - /var/run/clamav:size=10M,mode=755
   - /var/log/clamav:size=50M,mode=755
-  - /etc/clamav:size=1M,mode=755
 volumes:
   - clamav-tmp:/tmp
   - clamav-db:/var/lib/clamav
