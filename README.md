@@ -160,27 +160,27 @@ In practice, most scans use far less. A reasonable starting point is **5-10 GB**
 ### OpenShift / Kubernetes Compatibility
 
 This image is **OpenShift compatible**:
-- Runs as non-root user (UID 1001)
-- Uses GID 0 pattern for OpenShift random UID support
-- No privilege escalation required (`gosu`/`su` not used)
+- Runs as non-root user (UID 1001, GID 0)
+- Works with OpenShift's random UID assignment
+- No privilege escalation required
 
-OpenShift assigns random UIDs but always in GID 0 (root group). All writable directories are owned by `1001:0` with `ug+rwx` permissions, allowing any UID in GID 0 to write.
+All writable directories use the GID 0 pattern (`chown 1001:0`, `chmod ug+rwx`), allowing any UID in GID 0 to write.
 
 ### Example Docker Compose
 
 ```yaml
 read_only: true
 security_opt:
-  - no-new-privileges:true
+  - no-new-privileges: true
 tmpfs:
-  - /var/run/clamav:size=10M,mode=775
-  - /var/log/clamav:size=50M,mode=775
-  - /tmp/scans:size=5G,mode=775
+  - /var/run/clamav:size=10M,mode=755
+  - /var/log/clamav:size=50M,mode=755
+  - /tmp/scans:size=5G,mode=755
 volumes:
   - clamav-db:/var/lib/clamav
 ```
 
-### Example Kubernetes Deployment
+### Example Kubernetes/OpenShift Deployment
 
 ```yaml
 apiVersion: apps/v1
@@ -188,12 +188,15 @@ kind: Deployment
 metadata:
   name: clamav-rest
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clamav-rest
   template:
+    metadata:
+      labels:
+        app: clamav-rest
     spec:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1001
-        fsGroup: 0
       containers:
         - name: clamav-rest
           image: clamav-rest:latest
@@ -207,7 +210,7 @@ spec:
           volumeMounts:
             - name: clamav-db
               mountPath: /var/lib/clamav
-            - name: run-dir
+            - name: run-clamav
               mountPath: /var/run/clamav
             - name: tmp-scans
               mountPath: /tmp/scans
@@ -215,7 +218,7 @@ spec:
         - name: clamav-db
           persistentVolumeClaim:
             claimName: clamav-db
-        - name: run-dir
+        - name: run-clamav
           emptyDir: {}
         - name: tmp-scans
           emptyDir: {}
