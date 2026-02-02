@@ -1,3 +1,3 @@
 module github.com/yeeth-security/clamav-rest
 
-go 1.21
+go 1.25

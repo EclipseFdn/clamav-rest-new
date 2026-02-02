@@ -1,7 +1,7 @@
 # ClamAV REST
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/EclipseFdn/clamav-rest-new)](go.mod)
+[![License](https://img.shields.io/badge/License-EPL2.0-blue.svg)](LICENSE.md)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
 
 A lightweight REST API for ClamAV virus scanning. Designed for **internal use only** as part of backend file processing pipelines.
