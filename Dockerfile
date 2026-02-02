@@ -12,7 +12,7 @@
 # =============================================================================
 
 # Build stage - use official Go image (Debian-based)
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 

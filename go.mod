@@ -1,3 +1,3 @@
-module github.com/yeeth-security/clamav-rest
+module github.com/EclipseFdn/clamav-rest
 
 go 1.25
