@@ -92,8 +92,8 @@ ENV MAX_RECURSION=16
 # Scan timeout
 ENV SCAN_TIMEOUT_MINUTES=5
 
-# ClamAV daemon max threads (default 10 is too low for high throughput)
-ENV MAX_THREADS=20
+# ClamAV daemon max threads
+ENV MAX_THREADS=10
 # =============================================================================
 
 EXPOSE 9000

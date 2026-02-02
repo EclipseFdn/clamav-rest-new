@@ -30,6 +30,7 @@ type Config struct {
 
 	// Scan settings
 	ScanTimeout time.Duration // Maximum time for scan operation
+	MaxThreads  int           // ClamAV MaxThreads (for conditional multiscan)
 }
 
 // Environment variable names
@@ -44,6 +45,7 @@ const (
 	EnvMaxFileCount     = "MAX_FILE_COUNT"
 	EnvMaxSingleFile    = "MAX_SINGLE_FILE_MB"
 	EnvScanTimeout      = "SCAN_TIMEOUT_MINUTES"
+	EnvMaxThreads       = "MAX_THREADS"
 )
 
 // Default values
@@ -57,6 +59,7 @@ const (
 	DefaultMaxFileCount     = 100000 // 100k files
 	DefaultMaxSingleFileMB  = 256    // 256MB
 	DefaultScanTimeoutMins  = 5      // 5 minutes
+	DefaultMaxThreads       = 10     // ClamAV default
 )
 
 // LoadConfig loads configuration from environment variables.
@@ -78,8 +81,9 @@ func LoadConfig() *Config {
 		MaxFileCount:      getEnvInt(EnvMaxFileCount, DefaultMaxFileCount),
 		MaxSingleFileSize: uint64(getEnvInt(EnvMaxSingleFile, DefaultMaxSingleFileMB)) << 20,
 
-		// Scan timeout
+		// Scan settings
 		ScanTimeout: time.Duration(getEnvInt(EnvScanTimeout, DefaultScanTimeoutMins)) * time.Minute,
+		MaxThreads:  getEnvInt(EnvMaxThreads, DefaultMaxThreads),
 	}
 
 	return config
@@ -98,6 +102,7 @@ func (c *Config) LogConfig() {
 	log.Printf("  Max file count: %d", c.MaxFileCount)
 	log.Printf("  Max single file: %d MB", c.MaxSingleFileSize>>20)
 	log.Printf("  Scan timeout: %v", c.ScanTimeout)
+	log.Printf("  Max threads: %d (multiscan: %v)", c.MaxThreads, c.MaxThreads >= 2)
 }
 
 // getEnvStr returns environment variable value or default

@@ -72,18 +72,29 @@ func main() {
 	}
 }
 
-// healthHandler returns service health status
+// healthHandler returns service health status.
+// Returns 503 Service Unavailable if clamd is not running.
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	version, dbVersion := scanner.GetVersion()
+	version, dbVersion, err := scanner.GetVersion()
 
-	response := HealthResponse{
+	w.Header().Set("Content-Type", "application/json")
+
+	if err != nil {
+		// clamd is unavailable - return 503 so Kubernetes knows we're unhealthy
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(HealthResponse{
+			Status:        "unhealthy",
+			ClamAVVersion: "",
+			DBVersion:     "",
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(HealthResponse{
 		Status:        "ok",
 		ClamAVVersion: version,
 		DBVersion:     dbVersion,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
 // scanHandler handles file upload and scanning
