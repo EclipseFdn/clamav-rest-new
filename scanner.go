@@ -44,12 +44,13 @@ func NewScanner(config *Config) *Scanner {
 	}
 }
 
-// GetVersion returns ClamAV and database versions
-func (s *Scanner) GetVersion() (string, string) {
+// GetVersion returns ClamAV and database versions.
+// Returns an error if clamd is unavailable.
+func (s *Scanner) GetVersion() (string, string, error) {
 	cmd := exec.Command(clamdscanBinary, "--config-file="+clamdConfigFile, "--version")
 	output, err := cmd.Output()
 	if err != nil {
-		return "unknown", "unknown"
+		return "", "", fmt.Errorf("clamd unavailable: %w", err)
 	}
 
 	// Parse version string like "ClamAV 1.0.0/26789/Mon Jan 1 12:00:00 2024"
@@ -66,7 +67,7 @@ func (s *Scanner) GetVersion() (string, string) {
 		dbVersion = parts[1]
 	}
 
-	return clamVersion, dbVersion
+	return clamVersion, dbVersion, nil
 }
 
 // ScanFile scans a file with ClamAV.
@@ -167,16 +168,21 @@ func (s *Scanner) runClamAV(targetDir string) ([]Threat, error) {
 	// --no-summary: skip summary at end (cleaner parsing)
 	// --infected: only show infected files
 	// --fdpass: pass file descriptor to daemon (faster for local files)
-	// --multiscan: scan in parallel
+	// --multiscan: scan in parallel (requires MaxThreads >= 2)
 	// Note: clamdscan scans directories recursively by default
 	args := []string{
 		"--config-file=" + clamdConfigFile,
 		"--no-summary",
 		"--infected",
 		"--fdpass",
-		"--multiscan",
-		targetDir,
 	}
+
+	// Only use multiscan if we have enough threads (requires >= 2)
+	if s.config.MaxThreads >= 2 {
+		args = append(args, "--multiscan")
+	}
+
+	args = append(args, targetDir)
 
 	if s.config.DebugMode {
 		log.Printf("Running: %s %v", clamdscanBinary, args)
@@ -207,6 +213,14 @@ func (s *Scanner) runClamAV(targetDir string) ([]Threat, error) {
 		}
 	}
 
+	// Check for connection errors in output BEFORE parsing
+	// This catches cases where clamd crashes or is unavailable
+	if strings.Contains(outputStr, "Could not connect") ||
+		strings.Contains(outputStr, "Connection refused") ||
+		strings.Contains(outputStr, "Can't connect to clamd") {
+		return nil, fmt.Errorf("ClamAV unavailable: %s", outputStr)
+	}
+
 	// Parse the output for threats
 	// ClamAV exit codes:
 	// 0 = no virus found
@@ -230,6 +244,11 @@ func (s *Scanner) runClamAV(targetDir string) ([]Threat, error) {
 			}
 		}
 		return nil, fmt.Errorf("clamdscan error: %v", err)
+	}
+
+	// Extra safety: if output contains ERROR, don't trust the result
+	if strings.Contains(outputStr, "ERROR:") {
+		return nil, fmt.Errorf("ClamAV error: %s", outputStr)
 	}
 
 	return threats, nil
