@@ -1,3 +1,3 @@
 module github.com/EclipseFdn/clamav-rest
 
-go 1.25
+go 1.21
