@@ -144,8 +144,10 @@ Supports **read-only root filesystem**. These directories need write access:
 |-----------|---------|------|---------|
 | `/tmp/scans` | Scan temp files | See below | emptyDir or tmpfs |
 | `/var/run/clamav` | clamd pid + configs | 10MB | emptyDir or tmpfs |
-| `/var/log/clamav` | Logs (stdout in container) | 50MB | emptyDir or tmpfs |
-| `/var/lib/clamav` | Virus signatures | ~2GB | **Persistent volume** |
+| `/var/log/clamav` | Logs | 50MB | emptyDir or tmpfs |
+| `/var/lib/clamav-data` | Virus signatures | ~2GB | **Persistent volume** |
+
+> **Important:** Mount the persistent volume at `/var/lib/clamav-data` (not `/var/lib/clamav`). The base image's virus definitions live at `/var/lib/clamav` and are copied to the path on first startup if empty. This works around OpenShift's PV behavior which shadows existing directory content.
 
 > **Important:** Do NOT mount a volume over `/etc/clamav`. It contains certificates required by ClamAV 1.5+ for signature verification. Config files are generated in `/var/run/clamav` instead.
 
@@ -185,7 +187,7 @@ tmpfs:
   - /var/log/clamav:size=50M,mode=755
   - /tmp/scans:size=5G,mode=755
 volumes:
-  - clamav-db:/var/lib/clamav
+  - clamav-db:/var/lib/clamav-data
 ```
 
 ### Example Kubernetes/OpenShift Deployment
@@ -217,9 +219,11 @@ spec:
               memory: "4Gi"
           volumeMounts:
             - name: clamav-db
-              mountPath: /var/lib/clamav
+              mountPath: /var/lib/clamav-data
             - name: run-clamav
               mountPath: /var/run/clamav
+            - name: log-clamav
+              mountPath: /var/log/clamav
             - name: tmp-scans
               mountPath: /tmp/scans
       volumes:
@@ -227,6 +231,8 @@ spec:
           persistentVolumeClaim:
             claimName: clamav-db
         - name: run-clamav
+          emptyDir: {}
+        - name: log-clamav
           emptyDir: {}
         - name: tmp-scans
           emptyDir: {}
