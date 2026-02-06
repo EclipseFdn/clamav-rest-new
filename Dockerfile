@@ -49,9 +49,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directories with GID 0 ownership for OpenShift compatibility
-RUN mkdir -p /var/run/clamav /var/lib/clamav /var/log/clamav /tmp/scans && \
-    chown -R 1001:0 /var/run/clamav /var/lib/clamav /var/log/clamav /tmp/scans && \
-    chmod -R ug+rwx /var/run/clamav /var/lib/clamav /var/log/clamav /tmp/scans
+# /var/lib/clamav - base image definitions (untouched, used as fallback)
+# /var/lib/clamav-data - PV mount point for persistent definitions
+RUN mkdir -p /var/run/clamav /var/lib/clamav-data /var/log/clamav /tmp/scans && \
+    chown -R 1001:0 /var/run/clamav /var/lib/clamav /var/lib/clamav-data /var/log/clamav /tmp/scans && \
+    chmod -R ug+rwx /var/run/clamav /var/lib/clamav /var/lib/clamav-data /var/log/clamav /tmp/scans
 
 # Fix /etc/clamav permissions for certificates (read-only is fine)
 RUN chown -R 1001:0 /etc/clamav && \
