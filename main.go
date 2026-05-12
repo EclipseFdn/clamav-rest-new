@@ -145,7 +145,16 @@ func scanHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := scanner.ScanFile(tempFile.Name())
 	if err != nil {
 		log.Printf("Scan failed for %s: %v", safeFilename, err)
-		sendError(w, "Scan operation failed")
+
+		errorResponse := ScanResponse{
+			Status:       "error",
+			Threats:      nil,
+			ScannedFiles: 0,
+			ScanTimeMs:   time.Since(startTime).Milliseconds(),
+			Error:        err.Error(),
+		}
+
+		sendResponse(w, errorResponse)
 		return
 	}
 
@@ -164,8 +173,7 @@ func scanHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Scan completed: %s - %s (%d threats, %d files, %dms)",
 		safeFilename, status, len(result.Threats), result.ScannedFiles, response.ScanTimeMs)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	sendResponse(w, response)
 }
 
 // sendError sends an error response to the client.
@@ -177,6 +185,11 @@ func sendError(w http.ResponseWriter, message string) {
 		Status: "error",
 		Error:  message,
 	})
+}
+
+func sendResponse(w http.ResponseWriter, response ScanResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // sanitizeFilename removes control characters and limits length for safe logging.
