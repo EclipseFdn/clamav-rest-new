@@ -37,15 +37,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o clamav-rest .
 # - Freshclam for updates
 # - Debian-based for compatibility
 #
-# Pinned to version 1.5.1 for reproducible builds
+# Pinned to version 1.5.4 for reproducible builds
 # =============================================================================
-FROM clamav/clamav-debian:1.5.1
+FROM clamav/clamav-debian:1.5.4
 
 # Install curl for healthcheck
 # Versions pinned for reproducible builds (Debian trixie)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl=8.14.1-2+deb13u2 && \
+        curl=8.14.1-2+deb13u7 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directories with GID 0 ownership for OpenShift compatibility
