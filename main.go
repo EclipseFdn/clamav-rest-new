@@ -2,8 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"time"
@@ -106,43 +109,32 @@ func scanHandler(w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now()
 
-	// Parse multipart form with configured size limit
-	if err := r.ParseMultipartForm(config.MaxUploadSize); err != nil {
-		// Log full error internally, return generic message to client
-		log.Printf("Failed to parse multipart form: %v", err)
-		sendError(w, "Invalid request format")
-		return
-	}
-
-	file, header, err := r.FormFile("file")
+	tempPath, filename, err := saveUpload(w, r, "")
 	if err != nil {
-		log.Printf("No file in request: %v", err)
-		sendError(w, "No file provided in request")
+		var tooLarge *http.MaxBytesError
+		switch {
+		case errors.As(err, &tooLarge):
+			log.Printf("Upload exceeds %d bytes", tooLarge.Limit)
+			sendErrorStatus(w, "Upload too large", http.StatusRequestEntityTooLarge)
+		case errors.Is(err, errBadForm):
+			log.Printf("Failed to parse multipart form: %v", err)
+			sendError(w, "Invalid request format")
+		case errors.Is(err, errNoFile):
+			log.Printf("No file in request: %v", err)
+			sendError(w, "No file provided in request")
+		default:
+			log.Printf("Failed to save upload: %v", err)
+			sendError(w, "Server error during file processing")
+		}
 		return
 	}
-	defer file.Close()
+	defer os.Remove(tempPath)
 
 	// Sanitize filename for logging (remove control characters, limit length)
-	safeFilename := sanitizeFilename(header.Filename)
-	log.Printf("Received file: %s (%d bytes)", safeFilename, header.Size)
+	safeFilename := sanitizeFilename(filename)
+	log.Printf("Received file: %s", safeFilename)
 
-	tempFile, err := os.CreateTemp("", "clamav-scan-*")
-	if err != nil {
-		log.Printf("Failed to create temp file: %v", err)
-		sendError(w, "Server error during file processing")
-		return
-	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
-
-	if _, err := io.Copy(tempFile, file); err != nil {
-		log.Printf("Failed to write temp file: %v", err)
-		sendError(w, "Server error during file processing")
-		return
-	}
-	tempFile.Close()
-
-	result, err := scanner.ScanFile(tempFile.Name())
+	result, err := scanner.ScanFile(tempPath)
 	if err != nil {
 		log.Printf("Scan failed for %s: %v", safeFilename, err)
 
@@ -176,11 +168,92 @@ func scanHandler(w http.ResponseWriter, r *http.Request) {
 	sendResponse(w, response)
 }
 
+var (
+	errBadForm = errors.New("invalid multipart request")
+	errNoFile  = errors.New("no file part in request")
+)
+
+// saveUpload streams the "file" part of a multipart request into a new temp
+// file in dir (the default temp dir if empty), so memory use stays constant
+// regardless of upload size. The caller removes the returned path.
+func saveUpload(w http.ResponseWriter, r *http.Request, dir string) (path, filename string, err error) {
+	r.Body = http.MaxBytesReader(w, r.Body, config.MaxUploadSize)
+
+	mr, err := r.MultipartReader()
+	if err != nil {
+		return "", "", fmt.Errorf("%w: %v", errBadForm, err)
+	}
+
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			return "", "", errNoFile
+		}
+		if err != nil {
+			return "", "", classifyReadError(err)
+		}
+		if part.FormName() == "file" {
+			return copyPart(part, dir)
+		}
+	}
+}
+
+// copyPart writes the part to a new temp file in dir and returns its path.
+func copyPart(part *multipart.Part, dir string) (string, string, error) {
+	defer part.Close()
+
+	tempFile, err := os.CreateTemp(dir, "clamav-scan-*")
+	if err != nil {
+		return "", "", err
+	}
+	if err := copyUpload(tempFile, part); err != nil {
+		tempFile.Close()
+		os.Remove(tempFile.Name())
+		return "", "", err
+	}
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempFile.Name())
+		return "", "", err
+	}
+	return tempFile.Name(), part.FileName(), nil
+}
+
+// copyUpload copies src to dst. Only src failures are classified as request
+// errors; a dst failure (disk full, I/O error) stays a plain server error.
+func copyUpload(dst io.Writer, src io.Reader) error {
+	_, err := io.Copy(dst, readClassifier{src})
+	return err
+}
+
+type readClassifier struct{ io.Reader }
+
+func (r readClassifier) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err != nil && err != io.EOF {
+		err = classifyReadError(err)
+	}
+	return n, err
+}
+
+// classifyReadError keeps size-limit errors intact and marks any other
+// body read failure as a malformed request.
+func classifyReadError(err error) error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return err
+	}
+	return fmt.Errorf("%w: %v", errBadForm, err)
+}
+
 // sendError sends an error response to the client.
 // Note: message should be a generic, sanitized string - do not include internal errors.
 func sendError(w http.ResponseWriter, message string) {
+	sendErrorStatus(w, message, http.StatusInternalServerError)
+}
+
+func sendErrorStatus(w http.ResponseWriter, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
+	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(ScanResponse{
 		Status: "error",
 		Error:  message,
